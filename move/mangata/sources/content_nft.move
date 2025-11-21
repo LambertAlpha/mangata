@@ -17,6 +17,7 @@ module mangata::content_nft {
     const E_INVALID_PRICE: u64 = 0;
     const E_INSUFFICIENT_PAYMENT: u64 = 1;
     const E_NOT_OWNER: u64 = 2;
+    const E_METADATA_ALREADY_SET: u64 = 3;
 
     /// ContentNFT 代表一个加密内容的访问权
     /// 持有此 NFT 即可解密并查看对应的内容
@@ -65,6 +66,12 @@ module mangata::content_nft {
         nft_id: address,
         from: address,
         to: address,
+    }
+
+    /// 元数据更新事件 - 当创作者更新加密元数据时触发
+    public struct MetadataUpdated has copy, drop {
+        nft_id: address,
+        creator: address,
     }
 
     /// 铸造 ContentNFT
@@ -179,6 +186,35 @@ module mangata::content_nft {
         assert!(new_price > 0, E_INVALID_PRICE);
 
         nft.price = new_price;
+    }
+
+    /// 创作者更新加密元数据 (仅允许更新一次)
+    /// 用于两阶段mint: 先mint获取NFT ID,再用真实ID加密metadata
+    ///
+    /// @param nft - 要更新的 ContentNFT
+    /// @param encrypted_metadata - Seal 加密的元数据
+    /// @param ctx - 交易上下文
+    public entry fun update_encrypted_metadata(
+        nft: &mut ContentNFT,
+        encrypted_metadata: vector<u8>,
+        ctx: &TxContext
+    ) {
+        let sender = tx_context::sender(ctx);
+        let nft_id = object::id_address(nft);
+
+        // 只有创作者可以更新元数据
+        assert!(sender == nft.creator, E_NOT_OWNER);
+
+        // 只允许在元数据为空时更新(防止覆盖已有数据)
+        assert!(nft.encrypted_metadata.is_empty(), E_METADATA_ALREADY_SET);
+
+        nft.encrypted_metadata = encrypted_metadata;
+
+        // 发出更新事件
+        event::emit(MetadataUpdated {
+            nft_id,
+            creator: sender,
+        });
     }
 
     /// 转让 NFT 给另一个地址

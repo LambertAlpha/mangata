@@ -3,7 +3,7 @@
  */
 
 // Move 合约配置
-export const PACKAGE_ID = '0xa34269e2ad14ad20bf494bf41585a360908e01ac65397a9c33b91bda8d6faf39';
+export const PACKAGE_ID = '0xc70bfc311c8956242fd660cdc85da250e4727bc542809c13f7c39f5bffd82427';
 
 export const MODULE_NAME = 'content_nft';
 
