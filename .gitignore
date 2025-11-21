@@ -8,6 +8,7 @@ build/
 *.js
 *.js.map
 !*.config.js
+.next
 
 # Move build artifacts
 move/mangata/build/
