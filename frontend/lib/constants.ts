@@ -15,6 +15,7 @@ export const WALRUS_CONFIG = {
   network: 'testnet' as const,
   aggregator: 'https://aggregator.walrus-testnet.walrus.space',
   publisher: 'https://publisher.walrus-testnet.walrus.space',
+  uploadRelay: 'https://upload-relay.testnet.walrus.space', // 公共上传中继服务
 };
 
 // Seal 配置

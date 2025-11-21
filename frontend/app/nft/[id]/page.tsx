@@ -6,7 +6,7 @@ import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction, useSuiC
 import { Transaction } from '@mysten/sui/transactions';
 import { SealClient } from '@mysten/seal';
 import Link from 'next/link';
-import { PACKAGE_ID, MODULE_NAME, SEAL_CONFIG } from '@/lib/constants';
+import { PACKAGE_ID, MODULE_NAME, SEAL_CONFIG, WALRUS_CONFIG } from '@/lib/constants';
 import { decryptFile } from '@/lib/encryption';
 
 interface NFTDetail {
@@ -166,39 +166,33 @@ export default function NFTDetailPage() {
       const keyHex = new TextDecoder().decode(decryptedData);
       console.log('AES密钥解密成功');
 
-      // TODO: 从Walrus下载加密内容
-      // 目前Walrus还没有上传真实内容,所以暂时跳过这一步
-      console.log('⚠️ Walrus下载功能待实现,blob ID:', nft.blobId);
-
-      // 暂时显示成功消息
-      alert('解密成功!密钥已获取。\n\n注意:Walrus下载功能待实现,无法显示完整内容。');
-
-      /* 完整的解密流程(待Walrus修复后使用):
-
       // 从Walrus下载加密内容
+      console.log('正在从Walrus下载内容, Blob ID:', nft.blobId);
+
       const walrusResponse = await fetch(
-        `${WALRUS_CONFIG.aggregator}/v1/${nft.blobId}`
+        `${WALRUS_CONFIG.aggregator}/v1/blobs/${nft.blobId}`
       );
 
       if (!walrusResponse.ok) {
-        throw new Error('从Walrus下载失败');
+        throw new Error(`从Walrus下载失败: ${walrusResponse.status} ${walrusResponse.statusText}`);
       }
 
       const encryptedData = await walrusResponse.text();
+      console.log('Walrus下载成功,已加密数据大小:', encryptedData.length, '字符');
 
       // 使用AES密钥解密内容
       const decryptedBuffer = decryptFile(encryptedData, keyHex);
+      console.log('解密成功,数据大小:', decryptedBuffer.byteLength, '字节');
 
       // 根据内容类型显示
       if (nft.contentType === 'image') {
-        const blob = new Blob([decryptedBuffer]);
+        const blob = new Blob([decryptedBuffer], { type: 'image/jpeg' });
         const url = URL.createObjectURL(blob);
         setDecryptedContent(url);
       } else {
         const text = new TextDecoder().decode(decryptedBuffer);
         setDecryptedContent(text);
       }
-      */
 
     } catch (err: any) {
       console.error('解密失败:', err);

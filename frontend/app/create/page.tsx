@@ -73,25 +73,20 @@ export default function CreatePage() {
 
       console.log('AES密钥生成成功');
 
-      // 3. 上传到Walrus (使用HTTP API,不需要私钥)
+      // 3. 上传到Walrus (使用Upload Relay服务)
       setStatus('步骤3/5: 上传到 Walrus...');
 
-      // TODO: Walrus API端点需要修复,暂时使用假的blob ID测试后续流程
       // 将加密数据转为Blob
       const encryptedBlob = new TextEncoder().encode(encryptedData);
-      console.log('⚠️ Walrus API暂时无法使用(404),使用测试blob ID');
-
-      // 暂时使用一个假的blob ID用于测试
-      const blobId = 'test_blob_' + Date.now();
-      console.log('使用测试 Blob ID:', blobId);
-
-      /* 原始Walrus上传代码(待修复):
       console.log('正在上传到Walrus, 大小:', encryptedBlob.length, 'bytes');
 
-      const epochs = 5;
-      const walrusResponse = await fetch(`${WALRUS_CONFIG.publisher}/v1/store?epochs=${epochs}`, {
+      const epochs = 5; // 存储5个epoch (约30天)
+      const walrusResponse = await fetch(`${WALRUS_CONFIG.publisher}/v1/blobs?epochs=${epochs}`, {
         method: 'PUT',
         body: encryptedBlob,
+        headers: {
+          'Content-Type': 'application/octet-stream',
+        },
       });
 
       console.log('Walrus响应状态:', walrusResponse.status, walrusResponse.statusText);
@@ -105,7 +100,10 @@ export default function CreatePage() {
       const walrusResult = await walrusResponse.json();
       console.log('Walrus响应数据:', walrusResult);
 
-      const blobId = walrusResult.newlyCreated?.blobObject?.blobId || walrusResult.alreadyCertified?.blobId;
+      // 提取blob ID (支持新创建和已存在两种情况)
+      const blobId = walrusResult.newlyCreated?.blobObject?.blobId
+        || walrusResult.alreadyCertified?.blobId
+        || walrusResult.blobId;
 
       if (!blobId) {
         console.error('无法从响应中提取blobId:', walrusResult);
@@ -113,7 +111,6 @@ export default function CreatePage() {
       }
 
       console.log('Walrus上传成功, Blob ID:', blobId);
-      */
 
       // 4. Mint NFT (暂时不传encrypted_metadata)
       setStatus('步骤4/5: 铸造 NFT...');
