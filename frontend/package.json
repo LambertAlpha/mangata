@@ -9,7 +9,13 @@
     "start": "next start",
     "lint": "next lint"
   },
-  "keywords": ["web3", "nft", "sui", "walrus", "seal"],
+  "keywords": [
+    "web3",
+    "nft",
+    "sui",
+    "walrus",
+    "seal"
+  ],
   "author": "Lambert Lin",
   "license": "MIT",
   "packageManager": "pnpm@10.13.1",
@@ -18,6 +24,7 @@
     "@mysten/seal": "^0.9.4",
     "@mysten/sui": "^1.45.0",
     "@mysten/walrus": "^0.8.4",
+    "@tanstack/react-query": "^5.90.10",
     "@types/crypto-js": "^4.2.2",
     "crypto-js": "^4.2.0",
     "next": "^16.0.3",
