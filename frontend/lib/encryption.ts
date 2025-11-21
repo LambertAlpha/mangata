@@ -18,11 +18,19 @@ export function encryptFile(
   fileData: ArrayBuffer,
   key: CryptoJS.lib.WordArray
 ): string {
-  // 将 ArrayBuffer 转换为 WordArray
-  const wordArray = CryptoJS.lib.WordArray.create(fileData as any);
+  // 将 ArrayBuffer 转换为 Base64 字符串(分块处理避免栈溢出)
+  const uint8Array = new Uint8Array(fileData);
+  let binaryString = '';
+  const chunkSize = 8192; // 每次处理8KB
+  for (let i = 0; i < uint8Array.length; i += chunkSize) {
+    const chunk = uint8Array.subarray(i, i + chunkSize);
+    binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  const base64String = btoa(binaryString);
 
-  // 加密
-  const encrypted = CryptoJS.AES.encrypt(wordArray, key);
+  // 使用 AES 加密 Base64 字符串
+  // 注意: CryptoJS.AES.encrypt 需要的是字符串形式的key或passphrase
+  const encrypted = CryptoJS.AES.encrypt(base64String, key.toString(CryptoJS.enc.Hex));
 
   return encrypted.toString();
 }
@@ -32,21 +40,23 @@ export function encryptFile(
  */
 export function decryptFile(
   encryptedData: string,
-  key: string
+  keyHex: string
 ): ArrayBuffer {
-  // 解密
-  const decrypted = CryptoJS.AES.decrypt(encryptedData, CryptoJS.enc.Hex.parse(key));
+  // 从 Hex 创建密钥
+  const key = CryptoJS.enc.Hex.parse(keyHex);
 
-  // 转换为 ArrayBuffer
-  const words = decrypted.words;
-  const sigBytes = decrypted.sigBytes;
-  const u8 = new Uint8Array(sigBytes);
+  // 解密得到 Base64 字符串
+  const decrypted = CryptoJS.AES.decrypt(encryptedData, key);
+  const base64String = decrypted.toString(CryptoJS.enc.Utf8);
 
-  for (let i = 0; i < sigBytes; i++) {
-    u8[i] = (words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
+  // 将 Base64 转回 ArrayBuffer
+  const binaryString = atob(base64String);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
   }
 
-  return u8.buffer;
+  return bytes.buffer;
 }
 
 /**

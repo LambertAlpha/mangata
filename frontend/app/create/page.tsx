@@ -76,41 +76,64 @@ export default function CreatePage() {
       // 3. 上传到Walrus (使用HTTP API,不需要私钥)
       setStatus('步骤3/5: 上传到 Walrus...');
 
+      // TODO: Walrus API端点需要修复,暂时使用假的blob ID测试后续流程
       // 将加密数据转为Blob
       const encryptedBlob = new TextEncoder().encode(encryptedData);
+      console.log('⚠️ Walrus API暂时无法使用(404),使用测试blob ID');
 
-      const walrusResponse = await fetch(`${WALRUS_CONFIG.publisher}/v1/store`, {
+      // 暂时使用一个假的blob ID用于测试
+      const blobId = 'test_blob_' + Date.now();
+      console.log('使用测试 Blob ID:', blobId);
+
+      /* 原始Walrus上传代码(待修复):
+      console.log('正在上传到Walrus, 大小:', encryptedBlob.length, 'bytes');
+
+      const epochs = 5;
+      const walrusResponse = await fetch(`${WALRUS_CONFIG.publisher}/v1/store?epochs=${epochs}`, {
         method: 'PUT',
         body: encryptedBlob,
       });
 
+      console.log('Walrus响应状态:', walrusResponse.status, walrusResponse.statusText);
+
       if (!walrusResponse.ok) {
-        throw new Error(`Walrus上传失败: ${walrusResponse.statusText}`);
+        const errorText = await walrusResponse.text();
+        console.error('Walrus错误详情:', errorText);
+        throw new Error(`Walrus上传失败 (${walrusResponse.status}): ${errorText}`);
       }
 
       const walrusResult = await walrusResponse.json();
+      console.log('Walrus响应数据:', walrusResult);
+
       const blobId = walrusResult.newlyCreated?.blobObject?.blobId || walrusResult.alreadyCertified?.blobId;
 
       if (!blobId) {
+        console.error('无法从响应中提取blobId:', walrusResult);
         throw new Error('无法获取Walrus Blob ID');
       }
 
       console.log('Walrus上传成功, Blob ID:', blobId);
+      */
 
       // 4. Mint NFT (暂时不传encrypted_metadata)
       setStatus('步骤4/5: 铸造 NFT...');
       const priceInMist = Math.floor(parseFloat(price) * 1_000_000_000);
 
       const mintTx = new Transaction();
-      const emptyMetadata = new Uint8Array(0); // 空的加密元数据
+
+      // 注意: previewUrl 如果是 Data URL 会太大,超过 16KB 限制
+      // 暂时使用占位符,实际应该上传到 IPFS 或 Walrus
+      const safePreviewUrl = previewUrl && previewUrl.startsWith('data:')
+        ? 'https://via.placeholder.com/300'
+        : (previewUrl || 'https://via.placeholder.com/300');
 
       mintTx.moveCall({
         target: `${PACKAGE_ID}::${MODULE_NAME}::mint_nft`,
         arguments: [
           mintTx.pure.string(blobId),
-          mintTx.pure(emptyMetadata),
+          mintTx.pure.vector('u8', []), // 明确指定空的vector<u8>
           mintTx.pure.u64(priceInMist),
-          mintTx.pure.string(previewUrl || 'https://via.placeholder.com/300'),
+          mintTx.pure.string(safePreviewUrl),
           mintTx.pure.string(title),
           mintTx.pure.string(description),
           mintTx.pure.string(file.type.startsWith('image/') ? 'image' : 'text'),
@@ -124,6 +147,7 @@ export default function CreatePage() {
           {
             onSuccess: (result) => {
               console.log('Mint交易成功:', result);
+              console.log('交易effects:', result.effects);
               resolve(result);
             },
             onError: (err) => {
@@ -134,9 +158,28 @@ export default function CreatePage() {
         );
       });
 
-      // 从交易结果中提取NFT Object ID
-      const nftId = mintResult.effects?.created?.[0]?.reference?.objectId;
+      // 等待交易被索引,然后通过digest获取完整的交易数据
+      console.log('等待交易被索引...');
+      await new Promise(resolve => setTimeout(resolve, 2000)); // 等待2秒
+
+      const txResponse = await suiClient.getTransactionBlock({
+        digest: mintResult.digest,
+        options: {
+          showEffects: true,
+          showObjectChanges: true,
+        },
+      });
+
+      console.log('完整交易数据:', txResponse);
+
+      // 从objectChanges中查找created的NFT
+      const nftObject = txResponse.objectChanges?.find(
+        (change: any) => change.type === 'created' && change.objectType?.includes('ContentNFT')
+      ) as any;
+
+      const nftId = nftObject?.objectId;
       if (!nftId) {
+        console.error('objectChanges:', txResponse.objectChanges);
         throw new Error('无法获取NFT ID');
       }
 
@@ -162,11 +205,12 @@ export default function CreatePage() {
 
       // 6. 更新NFT的encrypted_metadata
       const updateTx = new Transaction();
+      const encryptedMetadata = Array.from(new Uint8Array(encryptedObject));
       updateTx.moveCall({
         target: `${PACKAGE_ID}::${MODULE_NAME}::update_encrypted_metadata`,
         arguments: [
           updateTx.object(nftId),
-          updateTx.pure(new Uint8Array(encryptedObject)),
+          updateTx.pure.vector('u8', encryptedMetadata),
         ],
       });
 
