@@ -5,7 +5,7 @@ import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction, useSuiC
 import { Transaction } from '@mysten/sui/transactions';
 import { SealClient } from '@mysten/seal';
 import Link from 'next/link';
-import { PACKAGE_ID, MODULE_NAME, WALRUS_CONFIG, SEAL_CONFIG } from '@/lib/constants';
+import { PACKAGE_ID, MODULE_NAME, MARKETPLACE_MODULE, MARKETPLACE_ID, WALRUS_CONFIG, SEAL_CONFIG } from '@/lib/constants';
 import { generateAESKey, encryptFile, keyToHex } from '@/lib/encryption';
 
 export default function CreatePage() {
@@ -200,9 +200,13 @@ export default function CreatePage() {
 
       console.log('Seal加密成功,正在更新NFT...');
 
-      // 6. 更新NFT的encrypted_metadata
+      // 6. 更新NFT的encrypted_metadata并上架到marketplace
+      setStatus('步骤5/5: 上架到Marketplace...');
+
       const updateTx = new Transaction();
       const encryptedMetadata = Array.from(new Uint8Array(encryptedObject));
+
+      // 6.1 更新加密元数据
       updateTx.moveCall({
         target: `${PACKAGE_ID}::${MODULE_NAME}::update_encrypted_metadata`,
         arguments: [
@@ -211,12 +215,22 @@ export default function CreatePage() {
         ],
       });
 
+      // 6.2 将NFT上架到marketplace
+      updateTx.moveCall({
+        target: `${PACKAGE_ID}::${MARKETPLACE_MODULE}::list_nft`,
+        arguments: [
+          updateTx.object(MARKETPLACE_ID),  // marketplace共享对象
+          updateTx.object(nftId),           // NFT对象
+          updateTx.pure.u64(priceInMist),   // 价格
+        ],
+      });
+
       signAndExecute(
         { transaction: updateTx },
         {
           onSuccess: (result) => {
-            console.log('元数据更新成功:', result);
-            setStatus('✅ 创建成功!');
+            console.log('NFT上架成功:', result);
+            setStatus('✅ 创建并上架成功!');
             setUploading(false);
 
             // 重置表单
@@ -230,8 +244,8 @@ export default function CreatePage() {
             }, 2000);
           },
           onError: (err) => {
-            console.error('元数据更新失败:', err);
-            setError(`元数据更新失败: ${err.message}。NFT已创建但未加密,ID: ${nftId}`);
+            console.error('上架失败:', err);
+            setError(`上架失败: ${err.message}。NFT已创建,ID: ${nftId}`);
             setUploading(false);
           },
         }

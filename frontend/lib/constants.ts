@@ -3,9 +3,11 @@
  */
 
 // Move 合约配置
-export const PACKAGE_ID = '0xc70bfc311c8956242fd660cdc85da250e4727bc542809c13f7c39f5bffd82427';
+export const PACKAGE_ID = '0x7af4462412eaa8960280a485f168693e2b4731d387c2e8a210b7264832fca9d0';
 
 export const MODULE_NAME = 'content_nft';
+export const MARKETPLACE_MODULE = 'marketplace';
+export const MARKETPLACE_ID = '0x93db1e3c2ef5261cf28336cb831f8ab3ff421d15e8c83f40351fa0b84a601207';
 
 // Sui 网络配置
 export const NETWORK = 'testnet';

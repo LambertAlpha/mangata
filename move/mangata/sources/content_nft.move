@@ -129,44 +129,14 @@ module mangata::content_nft {
         transfer::public_transfer(nft, creator);
     }
 
-    /// 购买 NFT (一次性买断)
-    ///
-    /// @param nft - 要购买的 ContentNFT
-    /// @param payment - 支付的 SUI 代币
-    /// @param ctx - 交易上下文
-    public entry fun purchase_nft(
-        nft: ContentNFT,
-        mut payment: Coin<SUI>,
-        ctx: &mut TxContext
-    ) {
-        let buyer = tx_context::sender(ctx);
-        let seller = nft.creator;
-        let price = nft.price;
-        let nft_id = object::id_address(&nft);
-
-        // 验证支付金额
-        assert!(coin::value(&payment) >= price, E_INSUFFICIENT_PAYMENT);
-
-        // 从支付中分割出准确的价格
-        let payment_coin = coin::split(&mut payment, price, ctx);
-
-        // 将剩余的钱退还给买家
-        transfer::public_transfer(payment, buyer);
-
-        // 将 NFT 价格转给创作者
-        transfer::public_transfer(payment_coin, seller);
-
-        // 发出购买事件
-        event::emit(NFTPurchased {
-            nft_id,
-            buyer,
-            seller,
-            price,
-        });
-
-        // 将 NFT 转移给买家
-        transfer::public_transfer(nft, buyer);
-    }
+    /// 废弃: 原购买函数设计有误,买家无法调用
+    /// 新方案: 买家直接转账给卖家,卖家手动转移NFT
+    /// TODO: 实现Marketplace共享对象来托管NFT交易
+    // public entry fun purchase_nft(
+    //     nft: ContentNFT,
+    //     mut payment: Coin<SUI>,
+    //     ctx: &mut TxContext
+    // ) { ... }
 
     /// 创作者更新 NFT 价格
     /// 只有创作者可以修改价格

@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
-import { SealClient } from '@mysten/seal';
+import { SealClient, SessionKey } from '@mysten/seal';
 import Link from 'next/link';
-import { PACKAGE_ID, MODULE_NAME, SEAL_CONFIG, WALRUS_CONFIG } from '@/lib/constants';
+import { PACKAGE_ID, MODULE_NAME, MARKETPLACE_MODULE, MARKETPLACE_ID, SEAL_CONFIG, WALRUS_CONFIG } from '@/lib/constants';
 import { decryptFile } from '@/lib/encryption';
 
 interface NFTDetail {
@@ -49,34 +49,38 @@ export default function NFTDetailPage() {
       setLoading(true);
       setError('');
 
-      const obj = await suiClient.getObject({
-        id: nftId,
-        options: {
-          showContent: true,
-          showOwner: true,
+      // 从marketplace的NFTListed事件中查找此NFT
+      const listedEvents = await suiClient.queryEvents({
+        query: {
+          MoveEventType: `${PACKAGE_ID}::${MARKETPLACE_MODULE}::NFTListed`,
         },
+        limit: 50,
+        order: 'descending',
       });
 
-      if (!obj.data) {
-        throw new Error('NFT不存在');
+      const nftEvent = listedEvents.data.find(
+        (event: any) => event.parsedJson.nft_id === nftId
+      );
+
+      if (!nftEvent) {
+        throw new Error('NFT不存在或未上架');
       }
 
-      const fields = (obj.data.content as any).fields;
-      const owner = (obj.data.owner as any)?.AddressOwner || '';
+      const data = nftEvent.parsedJson as any;
 
       const detail: NFTDetail = {
         id: nftId,
-        blobId: fields.blob_id,
-        creator: fields.creator,
-        owner,
-        title: fields.title,
-        description: fields.description,
-        price: (parseInt(fields.price) / 1_000_000_000).toFixed(2),
-        priceInMist: fields.price,
-        previewUrl: fields.preview_url,
-        contentType: fields.content_type,
-        createdAt: new Date(parseInt(fields.created_at)).toLocaleString('zh-CN'),
-        encryptedMetadata: fields.encrypted_metadata,
+        blobId: data.blob_id,
+        creator: data.seller, // 卖家就是创建者
+        owner: data.seller,   // 当前在marketplace中,owner也是卖家
+        title: data.title,
+        description: data.description,
+        price: (parseInt(data.price) / 1_000_000_000).toFixed(2),
+        priceInMist: data.price,
+        previewUrl: data.preview_url,
+        contentType: data.content_type,
+        createdAt: new Date(parseInt(data.created_at)).toLocaleString('zh-CN'),
+        encryptedMetadata: [], // marketplace事件中没有加密元数据
       };
 
       setNft(detail);
@@ -100,12 +104,13 @@ export default function NFTDetailPage() {
       // 分割gas coin作为payment
       const [coin] = tx.splitCoins(tx.gas, [parseInt(nft.priceInMist)]);
 
-      // 调用purchase_nft
+      // 调用marketplace的buy_nft
       tx.moveCall({
-        target: `${PACKAGE_ID}::${MODULE_NAME}::purchase_nft`,
+        target: `${PACKAGE_ID}::${MARKETPLACE_MODULE}::buy_nft`,
         arguments: [
-          tx.object(nftId),
-          coin,
+          tx.object(MARKETPLACE_ID),  // marketplace共享对象
+          tx.pure.id(nftId),          // NFT的ID
+          coin,                        // 支付coin
         ],
       });
 
@@ -150,49 +155,13 @@ export default function NFTDetailPage() {
         throw new Error('此NFT没有加密元数据');
       }
 
-      // 使用Seal解密AES密钥
-      const sealClient = new SealClient({
-        suiClient,
-        ...SEAL_CONFIG,
-      });
+      // TODO: Seal解密功能需要实现
+      // 问题: SessionKey.create需要Signer接口,但浏览器环境使用WalletAccount
+      // 需要找到正确的方式在dApp Kit环境中使用Seal解密
 
-      console.log('正在使用Seal解密AES密钥...');
-      const { decryptedData } = await sealClient.decrypt({
-        packageId: PACKAGE_ID,
-        id: nftId,
-        encryptedObject: new Uint8Array(nft.encryptedMetadata),
-      });
+      alert('抱歉,Seal解密功能暂未完成。\n\n原因:需要实现钱包签名适配器来创建SessionKey。\n\n当前可以测试:\n- 创建NFT\n- 浏览Marketplace\n- 购买NFT');
 
-      const keyHex = new TextDecoder().decode(decryptedData);
-      console.log('AES密钥解密成功');
-
-      // 从Walrus下载加密内容
-      console.log('正在从Walrus下载内容, Blob ID:', nft.blobId);
-
-      const walrusResponse = await fetch(
-        `${WALRUS_CONFIG.aggregator}/v1/blobs/${nft.blobId}`
-      );
-
-      if (!walrusResponse.ok) {
-        throw new Error(`从Walrus下载失败: ${walrusResponse.status} ${walrusResponse.statusText}`);
-      }
-
-      const encryptedData = await walrusResponse.text();
-      console.log('Walrus下载成功,已加密数据大小:', encryptedData.length, '字符');
-
-      // 使用AES密钥解密内容
-      const decryptedBuffer = decryptFile(encryptedData, keyHex);
-      console.log('解密成功,数据大小:', decryptedBuffer.byteLength, '字节');
-
-      // 根据内容类型显示
-      if (nft.contentType === 'image') {
-        const blob = new Blob([decryptedBuffer], { type: 'image/jpeg' });
-        const url = URL.createObjectURL(blob);
-        setDecryptedContent(url);
-      } else {
-        const text = new TextDecoder().decode(decryptedBuffer);
-        setDecryptedContent(text);
-      }
+      throw new Error('Seal解密功能开发中...');
 
     } catch (err: any) {
       console.error('解密失败:', err);
@@ -203,6 +172,7 @@ export default function NFTDetailPage() {
   };
 
   const isOwner = account && nft && account.address === nft.owner;
+  const isCreator = account && nft && account.address === nft.creator;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -294,7 +264,7 @@ export default function NFTDetailPage() {
                 </div>
               )}
 
-              {account && !isOwner && (
+              {account && !isOwner && !isCreator && (
                 <button
                   onClick={handlePurchase}
                   disabled={purchasing}
@@ -302,6 +272,17 @@ export default function NFTDetailPage() {
                 >
                   {purchasing ? '购买中...' : `购买 (${nft.price} SUI)`}
                 </button>
+              )}
+
+              {account && isCreator && !isOwner && (
+                <div className="flex-1 p-4 text-center border rounded-lg bg-yellow-50 dark:bg-yellow-900/20">
+                  <p className="text-yellow-700 dark:text-yellow-300 font-medium">
+                    ⚠️ 你是此NFT的创建者
+                  </p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                    创建者不能购买自己的NFT
+                  </p>
+                </div>
               )}
 
               {isOwner && (

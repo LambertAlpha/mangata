@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react';
 import { ConnectButton, useSuiClient } from '@mysten/dapp-kit';
 import Link from 'next/link';
-import { PACKAGE_ID, MODULE_NAME } from '@/lib/constants';
+import { PACKAGE_ID, MODULE_NAME, MARKETPLACE_MODULE } from '@/lib/constants';
 
 interface NFTData {
   id: string;
   blobId: string;
-  creator: address;
+  creator: string;
   title: string;
   description: string;
   price: string; // SUI (converted from MIST)
@@ -32,55 +32,74 @@ export default function MarketplacePage() {
       setLoading(true);
       setError('');
 
-      // 方法1: 通过事件查询所有mint的NFT
-      const events = await suiClient.queryEvents({
+      // 查询所有NFTListed事件 (在marketplace上架的NFT)
+      const listedEvents = await suiClient.queryEvents({
         query: {
-          MoveEventType: `${PACKAGE_ID}::${MODULE_NAME}::NFTMinted`,
+          MoveEventType: `${PACKAGE_ID}::${MARKETPLACE_MODULE}::NFTListed`,
         },
         limit: 50,
         order: 'descending',
       });
 
-      console.log('查询到的Mint事件:', events);
+      console.log('查询到的Listed事件:', listedEvents);
 
-      // 提取NFT ID列表
-      const nftIds = events.data.map((event: any) => event.parsedJson.nft_id);
+      // 查询所有NFTDelisted事件 (从marketplace下架的NFT)
+      const delistedEvents = await suiClient.queryEvents({
+        query: {
+          MoveEventType: `${PACKAGE_ID}::${MARKETPLACE_MODULE}::NFTDelisted`,
+        },
+        limit: 50,
+        order: 'descending',
+      });
 
-      if (nftIds.length === 0) {
+      // 查询所有NFTPurchased事件 (已售出的NFT)
+      const purchasedEvents = await suiClient.queryEvents({
+        query: {
+          MoveEventType: `${PACKAGE_ID}::${MARKETPLACE_MODULE}::NFTPurchased`,
+        },
+        limit: 50,
+        order: 'descending',
+      });
+
+      // 构建已下架和已售出的NFT ID集合
+      const delistedIds = new Set(
+        delistedEvents.data.map((event: any) => event.parsedJson.nft_id)
+      );
+      const purchasedIds = new Set(
+        purchasedEvents.data.map((event: any) => event.parsedJson.nft_id)
+      );
+
+      // 过滤出仍在售的NFT (已上架但未下架且未售出)
+      const activeListings = listedEvents.data.filter((event: any) => {
+        const nftId = event.parsedJson.nft_id;
+        return !delistedIds.has(nftId) && !purchasedIds.has(nftId);
+      });
+
+      console.log('当前在售的NFT:', activeListings);
+
+      if (activeListings.length === 0) {
         setNfts([]);
         setLoading(false);
         return;
       }
 
-      // 批量查询NFT对象数据
-      const nftObjects = await suiClient.multiGetObjects({
-        ids: nftIds,
-        options: {
-          showContent: true,
-          showOwner: true,
-        },
+      // 直接从事件中解析NFT数据(NFT元数据已包含在事件中)
+      const parsedNfts: NFTData[] = activeListings.map((event: any) => {
+        const data = event.parsedJson;
+        return {
+          id: data.nft_id,
+          blobId: data.blob_id,
+          creator: data.seller,
+          title: data.title,
+          description: data.description,
+          price: (parseInt(data.price) / 1_000_000_000).toFixed(2),
+          previewUrl: data.preview_url,
+          contentType: data.content_type,
+          createdAt: new Date(parseInt(data.created_at)).toLocaleString('zh-CN'),
+        };
       });
 
-      console.log('NFT对象数据:', nftObjects);
-
-      // 解析NFT数据
-      const parsedNfts: NFTData[] = nftObjects
-        .filter((obj: any) => obj.data)
-        .map((obj: any) => {
-          const fields = obj.data.content.fields;
-          return {
-            id: obj.data.objectId,
-            blobId: fields.blob_id,
-            creator: fields.creator,
-            title: fields.title,
-            description: fields.description,
-            price: (parseInt(fields.price) / 1_000_000_000).toFixed(2), // MIST -> SUI
-            previewUrl: fields.preview_url,
-            contentType: fields.content_type,
-            createdAt: new Date(parseInt(fields.created_at)).toLocaleString('zh-CN'),
-          };
-        });
-
+      console.log('解析后的NFT列表:', parsedNfts);
       setNfts(parsedNfts);
     } catch (err: any) {
       console.error('加载NFT失败:', err);
